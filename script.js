@@ -408,6 +408,11 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
         document.head.appendChild(style);
 
+        // Play star power music
+        if (marioAudio) {
+            marioAudio.playStarPower();
+        }
+
         // Create burst of coins
         for (let i = 0; i < 20; i++) {
             setTimeout(() => {
@@ -449,9 +454,381 @@ document.addEventListener('DOMContentLoaded', () => {
         requestAnimationFrame(animateScore);
     }, 1000);
 
+    // =============================================
+    // === 🎵 MARIO CHIPTUNE MUSIC ENGINE 🎵 ===
+    // =============================================
+
+    class MarioAudioEngine {
+        constructor() {
+            this.ctx = null;
+            this.isPlaying = false;
+            this.masterGain = null;
+            this.currentTimeout = null;
+            this.scheduledNotes = [];
+            this.volume = 0.15;
+        }
+
+        init() {
+            if (this.ctx) return;
+            this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+            this.masterGain = this.ctx.createGain();
+            this.masterGain.gain.value = this.volume;
+            this.masterGain.connect(this.ctx.destination);
+        }
+
+        // Convert note name to frequency
+        noteToFreq(note) {
+            const notes = {
+                'C3': 130.81, 'D3': 146.83, 'E3': 164.81, 'F3': 174.61,
+                'G3': 196.00, 'A3': 220.00, 'B3': 246.94,
+                'C4': 261.63, 'Cs4': 277.18, 'D4': 293.66, 'Ds4': 311.13,
+                'E4': 329.63, 'F4': 349.23, 'Fs4': 369.99, 'G4': 392.00,
+                'Gs4': 415.30, 'A4': 440.00, 'As4': 466.16, 'B4': 493.88,
+                'C5': 523.25, 'Cs5': 554.37, 'D5': 587.33, 'Ds5': 622.25,
+                'E5': 659.25, 'F5': 698.46, 'Fs5': 739.99, 'G5': 783.99,
+                'Gs5': 830.61, 'A5': 880.00, 'As5': 932.33, 'B5': 987.77,
+                'C6': 1046.50, 'D6': 1174.66, 'E6': 1318.51, 'F6': 1396.91,
+                'G6': 1567.98,
+                'REST': 0
+            };
+            return notes[note] || 0;
+        }
+
+        // Play a single chiptune note (square wave)
+        playNote(freq, startTime, duration, type = 'square', detune = 0) {
+            if (!this.ctx || freq === 0) return;
+
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+
+            osc.type = type;
+            osc.frequency.value = freq;
+            osc.detune.value = detune;
+
+            // Envelope for chiptune feel
+            gain.gain.setValueAtTime(0, startTime);
+            gain.gain.linearRampToValueAtTime(0.3, startTime + 0.01);
+            gain.gain.setValueAtTime(0.25, startTime + duration * 0.7);
+            gain.gain.linearRampToValueAtTime(0, startTime + duration);
+
+            osc.connect(gain);
+            gain.connect(this.masterGain);
+
+            osc.start(startTime);
+            osc.stop(startTime + duration);
+
+            return osc;
+        }
+
+        // Play coin sound effect
+        playCoinSound() {
+            this.init();
+            const now = this.ctx.currentTime;
+            this.playNote(988, now, 0.08, 'square');         // B5
+            this.playNote(1319, now + 0.08, 0.3, 'square');  // E6
+        }
+
+        // Play 1-UP sound
+        play1Up() {
+            this.init();
+            const now = this.ctx.currentTime;
+            const notes = [330, 392, 523, 659, 784, 1047];
+            notes.forEach((f, i) => {
+                this.playNote(f, now + i * 0.07, 0.07, 'square');
+            });
+        }
+
+        // Play power-up sound
+        playPowerUp() {
+            this.init();
+            const now = this.ctx.currentTime;
+            for (let i = 0; i < 12; i++) {
+                const freq = 200 + i * 80;
+                this.playNote(freq, now + i * 0.04, 0.04, 'square');
+            }
+        }
+
+        // Play star power jingle
+        playStarPower() {
+            this.init();
+            const now = this.ctx.currentTime;
+            const melody = [523, 659, 784, 1047, 784, 659, 523, 659, 784, 1047, 1319, 1047, 784];
+            melody.forEach((f, i) => {
+                this.playNote(f, now + i * 0.08, 0.08, 'square');
+            });
+        }
+
+        // Super Mario Bros Overworld Theme (main melody)
+        getMarioTheme() {
+            // Each entry: [note, duration_in_beats]
+            // Tempo: ~200 BPM → 1 beat ≈ 0.3s
+            return [
+                // Iconic opening
+                ['E5', 0.5], ['E5', 0.5], ['REST', 0.5], ['E5', 0.5],
+                ['REST', 0.5], ['C5', 0.5], ['E5', 0.5], ['REST', 0.5],
+                ['G5', 0.5], ['REST', 1.5], ['G4', 0.5], ['REST', 1.5],
+
+                // Main phrase 1
+                ['C5', 1], ['REST', 0.5], ['G4', 0.5], ['REST', 0.5], ['E4', 1],
+                ['REST', 0.5], ['A4', 0.5], ['REST', 0.5], ['B4', 0.5],
+                ['REST', 0.5], ['As4', 0.5], ['A4', 0.5], ['REST', 0.5],
+
+                // Triplet section
+                ['G4', 0.66], ['E5', 0.66], ['G5', 0.66],
+                ['A5', 0.5], ['REST', 0.5], ['F5', 0.5], ['G5', 0.5],
+                ['REST', 0.5], ['E5', 0.5], ['REST', 0.5],
+                ['C5', 0.5], ['D5', 0.5], ['B4', 0.5], ['REST', 0.5],
+
+                // Main phrase 2
+                ['C5', 1], ['REST', 0.5], ['G4', 0.5], ['REST', 0.5], ['E4', 1],
+                ['REST', 0.5], ['A4', 0.5], ['REST', 0.5], ['B4', 0.5],
+                ['REST', 0.5], ['As4', 0.5], ['A4', 0.5], ['REST', 0.5],
+
+                // Second triplet
+                ['G4', 0.66], ['E5', 0.66], ['G5', 0.66],
+                ['A5', 0.5], ['REST', 0.5], ['F5', 0.5], ['G5', 0.5],
+                ['REST', 0.5], ['E5', 0.5], ['REST', 0.5],
+                ['C5', 0.5], ['D5', 0.5], ['B4', 0.5], ['REST', 0.5],
+
+                // Bridge section
+                ['REST', 0.5], ['G5', 0.5], ['Fs5', 0.5], ['F5', 0.5],
+                ['Ds5', 0.5], ['REST', 0.5], ['E5', 0.5], ['REST', 0.5],
+                ['Gs4', 0.5], ['A4', 0.5], ['C5', 0.5], ['REST', 0.5],
+                ['A4', 0.5], ['C5', 0.5], ['D5', 0.5], ['REST', 0.5],
+
+                ['REST', 0.5], ['G5', 0.5], ['Fs5', 0.5], ['F5', 0.5],
+                ['Ds5', 0.5], ['REST', 0.5], ['E5', 0.5], ['REST', 0.5],
+                ['C6', 0.5], ['REST', 0.5], ['C6', 0.5], ['C6', 0.5],
+                ['REST', 1.5],
+
+                ['REST', 0.5], ['G5', 0.5], ['Fs5', 0.5], ['F5', 0.5],
+                ['Ds5', 0.5], ['REST', 0.5], ['E5', 0.5], ['REST', 0.5],
+                ['Gs4', 0.5], ['A4', 0.5], ['C5', 0.5], ['REST', 0.5],
+                ['A4', 0.5], ['C5', 0.5], ['D5', 0.5], ['REST', 0.5],
+
+                // Ending phrase
+                ['Ds5', 1], ['REST', 0.5], ['D5', 0.5], ['REST', 0.5],
+                ['C5', 1], ['REST', 1.5],
+
+                // Repeat intro
+                ['E5', 0.5], ['E5', 0.5], ['REST', 0.5], ['E5', 0.5],
+                ['REST', 0.5], ['C5', 0.5], ['E5', 0.5], ['REST', 0.5],
+                ['G5', 0.5], ['REST', 1.5], ['G4', 0.5], ['REST', 1.5],
+            ];
+        }
+
+        // Bass line accompaniment
+        getBassPart() {
+            return [
+                // Matches main theme timing (simplified)
+                ['D3', 0.5], ['D3', 0.5], ['REST', 0.5], ['D3', 0.5],
+                ['REST', 0.5], ['D3', 0.5], ['D3', 0.5], ['REST', 0.5],
+                ['G3', 0.5], ['REST', 1.5], ['G3', 0.5], ['REST', 1.5],
+
+                ['G3', 1], ['REST', 0.5], ['E3', 0.5], ['REST', 0.5], ['C3', 1],
+                ['REST', 0.5], ['F3', 0.5], ['REST', 0.5], ['G3', 0.5],
+                ['REST', 0.5], ['F3', 0.5], ['F3', 0.5], ['REST', 0.5],
+
+                ['C3', 0.66], ['G3', 0.66], ['C4', 0.66],
+                ['F3', 0.5], ['REST', 0.5], ['F3', 0.5], ['C4', 0.5],
+                ['REST', 0.5], ['G3', 0.5], ['REST', 0.5],
+                ['E3', 0.5], ['F3', 0.5], ['D3', 0.5], ['REST', 0.5],
+
+                ['G3', 1], ['REST', 0.5], ['E3', 0.5], ['REST', 0.5], ['C3', 1],
+                ['REST', 0.5], ['F3', 0.5], ['REST', 0.5], ['G3', 0.5],
+                ['REST', 0.5], ['F3', 0.5], ['F3', 0.5], ['REST', 0.5],
+
+                ['C3', 0.66], ['G3', 0.66], ['C4', 0.66],
+                ['F3', 0.5], ['REST', 0.5], ['F3', 0.5], ['C4', 0.5],
+                ['REST', 0.5], ['G3', 0.5], ['REST', 0.5],
+                ['E3', 0.5], ['F3', 0.5], ['D3', 0.5], ['REST', 0.5],
+
+                ['C3', 0.5], ['E3', 0.5], ['D3', 0.5], ['C3', 0.5],
+                ['B3', 0.5], ['REST', 0.5], ['G3', 0.5], ['REST', 0.5],
+                ['E3', 0.5], ['F3', 0.5], ['G3', 0.5], ['REST', 0.5],
+                ['F3', 0.5], ['G3', 0.5], ['A3', 0.5], ['REST', 0.5],
+
+                ['C3', 0.5], ['E3', 0.5], ['D3', 0.5], ['C3', 0.5],
+                ['B3', 0.5], ['REST', 0.5], ['G3', 0.5], ['REST', 0.5],
+                ['G3', 0.5], ['REST', 0.5], ['G3', 0.5], ['G3', 0.5],
+                ['REST', 1.5],
+
+                ['C3', 0.5], ['E3', 0.5], ['D3', 0.5], ['C3', 0.5],
+                ['B3', 0.5], ['REST', 0.5], ['G3', 0.5], ['REST', 0.5],
+                ['E3', 0.5], ['F3', 0.5], ['G3', 0.5], ['REST', 0.5],
+                ['F3', 0.5], ['G3', 0.5], ['A3', 0.5], ['REST', 0.5],
+
+                ['G3', 1], ['REST', 0.5], ['F3', 0.5], ['REST', 0.5],
+                ['E3', 1], ['REST', 1.5],
+
+                ['D3', 0.5], ['D3', 0.5], ['REST', 0.5], ['D3', 0.5],
+                ['REST', 0.5], ['D3', 0.5], ['D3', 0.5], ['REST', 0.5],
+                ['G3', 0.5], ['REST', 1.5], ['G3', 0.5], ['REST', 1.5],
+            ];
+        }
+
+        // Schedule and play the full theme
+        playTheme() {
+            this.init();
+            if (this.isPlaying) return;
+            this.isPlaying = true;
+
+            const bpm = 200;
+            const beatDuration = 60 / bpm;
+
+            const playMelodyLoop = () => {
+                if (!this.isPlaying) return;
+
+                const melody = this.getMarioTheme();
+                const bass = this.getBassPart();
+                const now = this.ctx.currentTime + 0.1;
+
+                // Schedule melody
+                let melodyTime = now;
+                melody.forEach(([note, beats]) => {
+                    const dur = beats * beatDuration;
+                    const freq = this.noteToFreq(note);
+                    if (freq > 0) {
+                        this.playNote(freq, melodyTime, dur * 0.9, 'square');
+                    }
+                    melodyTime += dur;
+                });
+
+                // Schedule bass
+                let bassTime = now;
+                bass.forEach(([note, beats]) => {
+                    const dur = beats * beatDuration;
+                    const freq = this.noteToFreq(note);
+                    if (freq > 0) {
+                        this.playNote(freq, bassTime, dur * 0.85, 'triangle', 0);
+                    }
+                    bassTime += dur;
+                });
+
+                // Schedule the full duration for loop
+                const totalDuration = melody.reduce((sum, [, beats]) => sum + beats * beatDuration, 0);
+
+                this.currentTimeout = setTimeout(() => {
+                    if (this.isPlaying) {
+                        playMelodyLoop();
+                    }
+                }, totalDuration * 1000);
+            };
+
+            playMelodyLoop();
+        }
+
+        stop() {
+            this.isPlaying = false;
+            if (this.currentTimeout) {
+                clearTimeout(this.currentTimeout);
+                this.currentTimeout = null;
+            }
+        }
+
+        toggle() {
+            if (this.isPlaying) {
+                this.stop();
+                return false;
+            } else {
+                this.playTheme();
+                return true;
+            }
+        }
+    }
+
+    // === INITIALIZE AUDIO ENGINE ===
+    const marioAudio = new MarioAudioEngine();
+
+    // === MUSIC TOGGLE BUTTON ===
+    const musicToggle = document.getElementById('musicToggle');
+    const musicIcon = document.getElementById('musicIcon');
+    const musicLabel = document.getElementById('musicLabel');
+
+    musicToggle.addEventListener('click', () => {
+        const playing = marioAudio.toggle();
+
+        if (playing) {
+            musicToggle.classList.add('playing');
+            musicIcon.textContent = '🔊';
+            musicLabel.textContent = 'ON';
+            // Spawn music note particles
+            spawnMusicNotes();
+        } else {
+            musicToggle.classList.remove('playing');
+            musicIcon.textContent = '🔇';
+            musicLabel.textContent = 'MUSIC';
+        }
+    });
+
+    // Floating music note particles when playing
+    let noteInterval = null;
+    function spawnMusicNotes() {
+        if (noteInterval) clearInterval(noteInterval);
+
+        const notes = ['♪', '♫', '♬', '🎵', '🎶'];
+        noteInterval = setInterval(() => {
+            if (!marioAudio.isPlaying) {
+                clearInterval(noteInterval);
+                noteInterval = null;
+                return;
+            }
+
+            const note = document.createElement('div');
+            note.className = 'music-note';
+            note.textContent = notes[Math.floor(Math.random() * notes.length)];
+
+            const btnRect = musicToggle.getBoundingClientRect();
+            note.style.left = (btnRect.left + Math.random() * 40 - 10) + 'px';
+            note.style.top = (btnRect.top - 10) + 'px';
+            note.style.fontSize = (12 + Math.random() * 10) + 'px';
+            note.style.color = ['#E52521', '#FBD000', '#049CD8', '#43B047'][Math.floor(Math.random() * 4)];
+
+            document.body.appendChild(note);
+            setTimeout(() => note.remove(), 2000);
+        }, 800);
+    }
+
+    // === ENHANCED COIN SOUND ===
+    // Override addCoin to include sound
+    const originalAddCoin = addCoin;
+    addCoin = function(x, y) {
+        // Play coin sound
+        if (marioAudio.ctx) {
+            marioAudio.playCoinSound();
+        }
+        // Increase coin count and score
+        coins++;
+        coinCount.textContent = String(coins).padStart(2, '0');
+        addScore(200);
+
+        // Coin popup animation
+        const popup = document.createElement('div');
+        popup.className = 'coin-popup';
+        popup.textContent = '✦';
+        popup.style.left = x + 'px';
+        popup.style.top = y + 'px';
+        document.body.appendChild(popup);
+
+        const scorePopup = document.createElement('div');
+        scorePopup.className = 'score-popup';
+        scorePopup.textContent = '+200';
+        scorePopup.style.left = (x + 20) + 'px';
+        scorePopup.style.top = y + 'px';
+        document.body.appendChild(scorePopup);
+
+        setTimeout(() => {
+            popup.remove();
+            scorePopup.remove();
+        }, 1200);
+    };
+
     console.log(`
     ╔════════════════════════════════════╗
     ║  🍄 SUPER SOUMITH PORTFOLIO 🍄    ║
+    ║                                    ║
+    ║  🎵 Click the music button to      ║
+    ║     hear the Mario theme!          ║
     ║                                    ║
     ║  Try the Konami Code!              ║
     ║  ↑↑↓↓←→←→ B A                    ║
@@ -460,3 +837,4 @@ document.addEventListener('DOMContentLoaded', () => {
     ╚════════════════════════════════════╝
     `);
 });
+
